@@ -1,4 +1,4 @@
-json{
+{
   "name": "line-queue-notification",
   "version": "1.0.0",
   "description": "Line notification system for queue management",
