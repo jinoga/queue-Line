@@ -1,4 +1,8 @@
-// ระบบแจ้งเตือน Line Official สมบูรณ์
+// server.js (ฉบับแก้ไข)
+
+// 1. โหลด Environment Variables จากไฟล์ .env ก่อนสิ่งอื่นใด
+require('dotenv').config();
+
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
@@ -9,13 +13,34 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// ⚠️ ข้อมูลเหล่านี้ต้องเปลี่ยนเป็นของจริง
-const LINE_CHANNEL_ACCESS_TOKEN = 'YOUR_CHANNEL_ACCESS_TOKEN_HERE';
-const LINE_CHANNEL_SECRET = 'YOUR_CHANNEL_SECRET_HERE';
-const SUPABASE_URL = 'https://ldkelubmmtkrfybapdpc.supabase.co';
-const SUPABASE_SERVICE_KEY = 'YOUR_SUPABASE_SERVICE_KEY_HERE'; // Service key ไม่ใช่ anon key
+// --- 2. ดึงค่า Config ที่จำเป็นจาก Environment Variables ---
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const PORT = process.env.PORT || 3001;
 
+// --- 3. ตรวจสอบความถูกต้องของ Config ---
+if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.error("❌ CRITICAL ERROR: ค่า config ที่จำเป็น (Supabase หรือ LINE) ไม่ได้ถูกตั้งค่าใน .env file");
+    console.error("กรุณาตรวจสอบว่าไฟล์ .env ของคุณมีตัวแปรครบถ้วน:");
+    console.error("  - LINE_CHANNEL_ACCESS_TOKEN");
+    console.error("  - LINE_CHANNEL_SECRET");
+    console.error("  - SUPABASE_URL");
+    console.error("  - SUPABASE_SERVICE_KEY");
+    process.exit(1); // หยุดการทำงานทันทีถ้าค่าไม่ครบ
+}
+
+// --- 4. สร้าง Supabase Client ด้วยค่าที่ถูกต้อง ---
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+
+// ---------------------------------------------------------------- //
+//                                                                  //
+//           โค้ดส่วนที่เหลือของคุณไม่ต้องแก้ไข (สมบูรณ์แล้ว)           //
+//                                                                  //
+// ---------------------------------------------------------------- //
+
 
 // ตรวจสอบลายเซ็น Line Webhook
 function verifySignature(body, signature) {
@@ -335,7 +360,7 @@ async function getUserProfile(userId) {
 // 💬 ตอบกลับข้อความ
 async function replyMessage(replyToken, messages) {
     try {
-        const response = await axios.post('https://api.line.me/v2/bot/message/reply', {
+        await axios.post('https://api.line.me/v2/bot/message/reply', {
             replyToken,
             messages
         }, {
@@ -345,7 +370,6 @@ async function replyMessage(replyToken, messages) {
             }
         });
         console.log('✅ Reply sent successfully');
-        return response.data;
     } catch (error) {
         console.error('❌ Error replying message:', error.response?.data || error.message);
         throw error;
@@ -355,7 +379,7 @@ async function replyMessage(replyToken, messages) {
 // 📤 ส่งข้อความหาผู้ใช้โดยตรง
 async function pushMessage(userId, messages) {
     try {
-        const response = await axios.post('https://api.line.me/v2/bot/message/push', {
+        await axios.post('https://api.line.me/v2/bot/message/push', {
             to: userId,
             messages
         }, {
@@ -365,7 +389,6 @@ async function pushMessage(userId, messages) {
             }
         });
         console.log(`✅ Push message sent to ${userId}`);
-        return response.data;
     } catch (error) {
         console.error(`❌ Error pushing message to ${userId}:`, error.response?.data || error.message);
         throw error;
@@ -618,13 +641,13 @@ setInterval(async () => {
         if (result.success && result.notificationsSent > 0) {
             console.log(`🔔 Auto-check completed: ${result.notificationsSent} notifications sent`);
         }
-    } catch (error) {
+    } catch (error)
+    {
         console.error('❌ Error in auto-check:', error);
     }
 }, 30000); // 30 seconds
 
 // 🌐 เริ่มเซิร์ฟเวอร์
-const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`🚀 Line Notification Server running on port ${PORT}`);
     console.log(`📡 Webhook URL: http://localhost:${PORT}/webhook/line`);
