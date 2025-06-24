@@ -372,6 +372,21 @@ app.get('/api/status', (req, res) => res.json({ status: 'running', uptime: proce
 // 🔄 ระบบตรวจสอบอัตโนมัติทุก 30 วินาที
 setInterval(checkAndNotifyAllUsers, 30000);
 
+app.get('/debug-vars', (req, res) => {
+    console.log("--- DEBUGGING ENVIRONMENT VARIABLES ---");
+    
+    const variables = {
+        PORT: process.env.PORT ? `✅ Found: ${process.env.PORT}` : "❌ MISSING!",
+        SUPABASE_URL: process.env.SUPABASE_URL ? "✅ Found" : "❌ MISSING!",
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ? "✅ Found (exists)" : "❌ MISSING!",
+        LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN ? "✅ Found (exists)" : "❌ MISSING!",
+        LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET ? "✅ Found (exists)" : "❌ MISSING!",
+    };
+
+    console.table(variables);
+    res.json(variables); // ส่งผลลัพธ์กลับไปให้เราดูใน browser ด้วย
+});
+
 // 🌐 เริ่มเซิร์ฟเวอร์
 app.listen(PORT, () => {
     console.log(`🚀 Line Notification Server running on port ${PORT}`);
