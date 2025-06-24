@@ -1,7 +1,7 @@
 // server.js (ฉบับแก้ไข)
 
 // 1. โหลด Environment Variables จากไฟล์ .env ก่อนสิ่งอื่นใด
-require('dotenv').config();
+//require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
