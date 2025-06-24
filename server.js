@@ -1,6 +1,6 @@
-// server.js (ฉบับสมบูรณ์: แจ้งเตือน 5 คิว + ป้องกันคิวซ้ำ)
+// server.js (ฉบับสมบูรณ์: แก้ไขทุกปัญหา + เพิ่มฟีเจอร์ล่าสุด)
 
-// 1. โหลด Environment Variables
+// 1. โหลด Environment Variables (สำคัญสำหรับ Local, ปลอดภัยสำหรับ Railway)
 //require('dotenv').config();
 
 // --- Dependencies ---
@@ -13,6 +13,7 @@ const cors = require('cors');
 // --- Express App Initialization & Middleware ---
 const app = express();
 
+// ✅ FIX: จัดการ CORS และ Pre-flight request
 const corsOptions = {
   origin: 'https://queue-monitor.vercel.app', // ❗️ แก้ไขให้เป็น URL ของ Frontend คุณ
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
@@ -21,6 +22,7 @@ const corsOptions = {
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
 
+// ✅ FIX: ดักจับ Raw Body ก่อน express.json ทำงาน เพื่อแก้ Invalid Signature
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf.toString();
@@ -36,7 +38,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const PORT = process.env.PORT || 3001;
 
 if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    console.error("❌ CRITICAL ERROR: Environment Variables ไม่ครบถ้วน!");
+    console.error("❌ CRITICAL ERROR: Environment Variables ไม่ครบถ้วน! โปรดตรวจสอบการตั้งค่าบน Railway หรือในไฟล์ .env");
     process.exit(1);
 }
 
@@ -63,14 +65,18 @@ async function processEventsInBackground(events) {
     }
 }
 
-// --- Webhook Endpoint ---
+// --- Webhook Endpoint (The Correct Implementation) ---
 app.post('/webhook/line', (req, res) => {
+    // ✅ FIX: ตอบกลับทันทีเพื่อป้องกัน Timeout
     res.status(200).send('OK');
+
     const signature = req.headers['x-line-signature'];
+    // ✅ FIX: ตรวจสอบลายเซ็นด้วย Raw Body
     if (!verifySignature(req.rawBody, signature)) {
         console.log('❌ Invalid signature. Ignoring request.');
         return;
     }
+    
     const events = req.body.events;
     if (events && events.length > 0) {
         processEventsInBackground(events);
@@ -88,7 +94,7 @@ async function handleTextMessage(event) {
     const queueMatch = messageText.match(/^(\d{4,5})$/);
     if (queueMatch) {
         const queueNumber = queueMatch[1];
-        // ✅ เรียกใช้ฟังก์ชันใหม่ที่มีระบบตรวจสอบคิวซ้ำ
+        // ✅ FEATURE: เรียกใช้ฟังก์ชันใหม่ที่มีระบบตรวจสอบคิวซ้ำ
         await registerOrNotifyDuplicateQueue(userId, queueNumber, event.replyToken);
     } else if (['เช็ค', 'ตรวจสอบ', 'สถานะ', 'check', 'status'].includes(messageText.toLowerCase())) {
         await checkQueueStatus(userId, event.replyToken);
@@ -100,7 +106,7 @@ async function handleTextMessage(event) {
     }
 }
 
-// ✅ ฟังก์ชันใหม่: ตรวจสอบคิวซ้ำก่อนลงทะเบียน
+// ✅ FEATURE: ฟังก์ชันใหม่สำหรับตรวจสอบคิวซ้ำก่อนลงทะเบียน
 async function registerOrNotifyDuplicateQueue(userId, queueNumber, replyToken) {
     try {
         const { data: existingUser, error: findError } = await supabase
@@ -171,7 +177,7 @@ async function getDetailedQueueStatus(queueNumber) {
     if (userQueue < latestCalled) return `🚫 คิวผ่านไปแล้ว! (คิวล่าสุด: ${latestCalled})`;
     if (userQueue === latestCalled) return `🎯 ถึงคิวแล้ว! เชิญที่เคาน์เตอร์ ${counterId}`;
     const remaining = userQueue - latestCalled;
-    // ✅ แจ้งเตือนล่วงหน้าที่ 5 คิว
+    // ✅ FEATURE: แจ้งเตือนล่วงหน้าที่ 5 คิว ในข้อความเช็คสถานะ
     return remaining <= 5 ? `⚠️ ใกล้ถึงแล้ว! (เหลือ ${remaining} คิว)` : `⏳ รออีก ${remaining} คิว`;
 }
 
@@ -205,6 +211,7 @@ async function pushMessage(userId, messages) {
 
 const notificationCache = new Map();
 
+// ✅ UPGRADE: ใช้ Promise.all เพื่อรองรับคนจำนวนมาก
 async function checkAndNotifyAllUsers() {
     console.log('🔍 Starting notification check...');
     try {
@@ -225,15 +232,14 @@ async function checkAndNotifyAllUsers() {
     }
 }
 
+// ✅ UPGRADE: Debug กระชับ + แจ้งเตือน 5 คิว
 async function checkAndNotifyUser(user) {
     const { line_user_id: userId, tracked_queue: queueNumber } = user;
     try {
         const counterId = getCounterIdFromQueue(queueNumber);
         if (!counterId) return false;
-
         const { data, error } = await supabase.from('queue_snapshots').select('current_queue').eq('current_counter', counterId).order('current_queue', { ascending: false }).limit(1);
         if (error || !data?.length) return false;
-
         const latestCalled = parseInt(data[0].current_queue);
         const userQueue = parseInt(queueNumber);
         const remaining = userQueue - latestCalled;
@@ -241,26 +247,22 @@ async function checkAndNotifyUser(user) {
         
         let notificationType = null;
         let message = '';
-
         if (userQueue === latestCalled) notificationType = 'current';
-        // ✅ แจ้งเตือนล่วงหน้าที่ 5 คิว
-        else if (remaining > 0 && remaining <= 5) notificationType = 'near';
+        else if (remaining > 0 && remaining <= 5) notificationType = 'near'; // ✅ FEATURE: เงื่อนไข 5 คิว
         else if (userQueue < latestCalled) notificationType = 'passed';
 
-        // CONCISE DEBUG LOG
+        // ✅ UPGRADE: Log แบบบรรทัดเดียว
         console.log(`[CHECK] User: ${user.display_name}, Q: ${userQueue}, Latest: ${latestCalled}, Remaining: ${remaining}, Notify: ${notificationType || 'No'}`);
 
         if (notificationType && !notificationCache.has(`${notificationKey}_${notificationType}`)) {
             if (notificationType === 'current') message = `🎯 ถึงคิวแล้ว! คิว ${queueNumber} เชิญที่เคาน์เตอร์ ${counterId}`;
-            if (notificationType === 'near') message = `⚠️ ใกล้ถึงแล้ว! คิว ${queueNumber} (เหลือ ${remaining} คิว)`;
+            if (notificationType === 'near') message = `⚠️ ใกล้ถึงคิวแล้ว! คิว ${queueNumber} (เหลือ ${remaining} คิว)`;
             if (notificationType === 'passed') message = `🚫 คิว ${queueNumber} ผ่านไปแล้ว (คิวล่าสุด: ${latestCalled})`;
             
             await pushMessage(userId, [{ type: 'text', text: message }]);
             notificationCache.set(`${notificationKey}_${notificationType}`, Date.now());
-
-            if(notificationType === 'passed' || notificationType === 'current') {
+            if (notificationType === 'passed' || notificationType === 'current') {
                 await stopQueueTracking(userId);
-// หยุดติดตามเมื่อถึงคิวหรือคิวผ่านไปแล้ว
             }
             return true;
         }
@@ -272,7 +274,18 @@ async function checkAndNotifyUser(user) {
 }
 
 
-// --- Server Startup ---
+// --- API Endpoints & Server Startup ---
+
+// Endpoint สำหรับให้ระบบอื่นมายิงเพื่อ Trigger การแจ้งเตือน
+app.post('/api/notify-queue-updates', async (req, res) => {
+    console.log('📡 Queue update notification triggered via API');
+    checkAndNotifyAllUsers(); // ไม่ต้องรอ
+    res.json({ success: true, message: "Notification check triggered." });
+});
+
+// Endpoint สำหรับตรวจสอบสถานะระบบ
+app.get('/api/status', (req, res) => res.json({ status: 'running', uptime: process.uptime() }));
+
 
 // 🔄 ระบบตรวจสอบอัตโนมัติทุก 30 วินาที
 setInterval(checkAndNotifyAllUsers, 30000);
